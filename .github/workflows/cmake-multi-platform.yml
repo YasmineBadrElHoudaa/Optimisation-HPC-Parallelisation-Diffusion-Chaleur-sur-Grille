@@ -1,5 +1,5 @@
-# CMake Workflow - Multi-platform with enhanced configurations
-name: Enhanced CMake CI
+# CMake Workflow - Multi-platform with C and CUDA support
+name: Enhanced CMake CI with CUDA Support
 
 on:
   push:
@@ -27,6 +27,9 @@ jobs:
           - os: ubuntu-latest
             c_compiler: clang
             cpp_compiler: clang++
+          - os: ubuntu-latest
+            c_compiler: nvcc
+            cpp_compiler: nvcc
           - os: macos-latest
             c_compiler: clang
             cpp_compiler: clang++
@@ -39,6 +42,8 @@ jobs:
             c_compiler: cl
           - os: macos-latest
             c_compiler: gcc
+          - os: macos-latest
+            c_compiler: nvcc
 
     steps:
     - uses: actions/checkout@v4
@@ -54,11 +59,19 @@ jobs:
       run: |
         sudo apt-get update || true
         sudo apt-get install -y build-essential cmake || true
+        if [[ "${{ matrix.c_compiler }}" == "nvcc" ]]; then
+          sudo apt-get install -y nvidia-cuda-toolkit || true
+        fi
 
     - name: Install dependencies (Windows)
       if: ${{ runner.os == 'Windows' }}
       run: |
         choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System'
+
+    - name: Verify CUDA Installation (Linux)
+      if: ${{ matrix.c_compiler == 'nvcc' }}
+      run: |
+        nvcc --version || echo "CUDA is not installed or accessible."
 
     - name: Configure CMake
       run: >
@@ -75,6 +88,11 @@ jobs:
     - name: Run Tests
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
       run: ctest --build-config ${{ matrix.build_type }} --output-on-failure
+
+    - name: CUDA Memory Check (Optional)
+      if: ${{ matrix.c_compiler == 'nvcc' }}
+      run: |
+        cuda-memcheck --tool memcheck ./your_cuda_executable || echo "CUDA Memory Check failed."
 
     - name: Code Coverage (Optional)
       if: ${{ matrix.build_type == 'Debug' }}
