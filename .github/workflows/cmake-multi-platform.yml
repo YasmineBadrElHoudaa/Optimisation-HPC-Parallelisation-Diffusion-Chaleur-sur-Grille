@@ -1,6 +1,8 @@
 # CMake Workflow - Multi-platform with C and CUDA support
+# Nom du workflow, utilisé pour des builds multi-plateformes supportant C et CUDA
 name: Enhanced CMake CI with CUDA Support
 
+# Déclencheurs pour ce workflow : lors des push et des pull requests vers la branche "main"
 on:
   push:
     branches: [ "main" ]
@@ -9,15 +11,19 @@ on:
 
 jobs:
   build:
+    # Cette étape s'exécutera sur différentes plateformes (Ubuntu, Windows, MacOS)
     runs-on: ${{ matrix.os }}
 
+    # Stratégie d'exécution, avec une matrice pour tester différents systèmes et compilateurs
     strategy:
       fail-fast: false
       matrix:
+        # Listes des plateformes et des compilateurs à tester
         os: [ubuntu-latest, windows-latest, macos-latest]
         build_type: [Release, Debug]
         c_compiler: [gcc, clang, cl]
         include:
+          # Compilateurs pour Windows, Ubuntu et macOS
           - os: windows-latest
             c_compiler: cl
             cpp_compiler: cl
@@ -28,12 +34,13 @@ jobs:
             c_compiler: clang
             cpp_compiler: clang++
           - os: ubuntu-latest
-            c_compiler: nvcc
+            c_compiler: nvcc  # Utilisation de CUDA pour Ubuntu
             cpp_compiler: nvcc
           - os: macos-latest
             c_compiler: clang
             cpp_compiler: clang++
         exclude:
+          # Exclusion de certaines configurations non compatibles
           - os: windows-latest
             c_compiler: gcc
           - os: windows-latest
@@ -46,33 +53,40 @@ jobs:
             c_compiler: nvcc
 
     steps:
+    # Récupération du code source
     - uses: actions/checkout@v4
 
+    # Définition d'un répertoire pour les fichiers de sortie de build
     - name: Set reusable strings
       id: strings
       shell: bash
       run: |
         echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
 
+    # Installation des dépendances sur Linux et macOS (compilateurs, CMake, etc.)
     - name: Install dependencies (Linux & MacOS)
       if: ${{ runner.os != 'Windows' }}
       run: |
-        sudo apt-get update || true
-        sudo apt-get install -y build-essential cmake || true
+        sudo apt-get update || true  # Mise à jour des paquets
+        sudo apt-get install -y build-essential cmake || true  # Installation des outils de base
+        # Si le compilateur est nvcc, on installe le toolkit CUDA
         if [[ "${{ matrix.c_compiler }}" == "nvcc" ]]; then
           sudo apt-get install -y nvidia-cuda-toolkit || true
         fi
 
+    # Installation des dépendances sur Windows (CMake)
     - name: Install dependencies (Windows)
       if: ${{ runner.os == 'Windows' }}
       run: |
         choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System'
 
+    # Vérification de l'installation de CUDA sur Linux
     - name: Verify CUDA Installation (Linux)
       if: ${{ matrix.c_compiler == 'nvcc' }}
       run: |
         nvcc --version || echo "CUDA is not installed or accessible."
 
+    # Configuration du projet avec CMake
     - name: Configure CMake
       run: >
         cmake -B ${{ steps.strings.outputs.build-output-dir }}
@@ -82,24 +96,29 @@ jobs:
         -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
         -S ${{ github.workspace }}
 
+    # Compilation du projet avec CMake
     - name: Build
       run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
 
+    # Exécution des tests
     - name: Run Tests
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
       run: ctest --build-config ${{ matrix.build_type }} --output-on-failure
 
+    # Vérification de la mémoire CUDA (optionnelle, seulement si CUDA est utilisé)
     - name: CUDA Memory Check (Optional)
       if: ${{ matrix.c_compiler == 'nvcc' }}
       run: |
         cuda-memcheck --tool memcheck ./your_cuda_executable || echo "CUDA Memory Check failed."
 
+    # Génération d'un rapport de couverture de code (optionnel, pour les builds Debug)
     - name: Code Coverage (Optional)
       if: ${{ matrix.build_type == 'Debug' }}
       run: |
         gcovr -r . --html-details coverage.html --output coverage.html
         echo "Code coverage report generated."
 
+    # Téléchargement des résultats des tests et de la couverture
     - name: Upload Test and Coverage Results
       if: success()
       uses: actions/upload-artifact@v3
